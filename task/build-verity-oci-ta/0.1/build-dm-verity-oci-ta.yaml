@@ -362,6 +362,8 @@ spec:
       export IMAGE_CERTIFICATE_PEM=${IMAGE_CERTIFICATE_PEM}
       export IMAGE_PRIVATE_KEY=${IMAGE_PRIVATE_KEY}
       export DOCKERFILE=${DOCKERFILE}
+      export ISO_PATH=RHEL-9.6.0-x86_64-dvd1.iso
+      export KS_LOCATION=helpers/rhel9-dm-root.ks
 
       REMOTESSHEOF
 
@@ -377,6 +379,14 @@ spec:
         cp -vf $ca_bundle /etc/pki/ca-trust/source/anchors
         update-ca-trust
       fi
+
+      # FIXME: try to get the QCOW2 image during build - not going to work in a hermetic environment
+      sudo dnf -y install virt-install
+      virt-install --virt-type kvm --os-variant rhel9.0 --arch x86_64 --boot uefi --name $QCOW2 --memory 8192 --location $ISO_PATH --disk bus=scsi,size=3 --initrd-inject=$KS_LOCATION --nographics --extra-args "console=ttyS0 inst.ks=file:/rhel9-dm-root.ks" --transient
+
+      # FIXME: create certificate+key for the build.
+      # We need to split the signing part as a separate (post-build) step
+      ./helpers/create-certs.sh .
 
       # Following example from https://github.com/confidential-devhub/coco-podvm-scripts/blob/main/example_run.sh
       [[ -f $QCOW2 && -f $IMAGE_CERTIFICATE_PEM && -f $IMAGE_PRIVATE_KEY ]] || \
