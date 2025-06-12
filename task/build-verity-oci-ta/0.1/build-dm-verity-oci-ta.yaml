@@ -1,0 +1,528 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: image-build, konflux
+  labels:
+    app.kubernetes.io/version: "0.1"
+    build.appstudio.redhat.com/build_type: docker
+  name: build-dm-verity-oci-ta
+spec:
+  description: "Build dm-verity image using https://github.com/confidential-devhub/coco-podvm-scripts"
+  params:
+  - default: activation-key
+    description: Name of secret which contains subscription activation key
+    name: ACTIVATION_KEY
+    type: string
+  - default: []
+    description: Additional base image references to include to the SBOM. Array of
+      image_reference_with_digest strings
+    name: ADDITIONAL_BASE_IMAGES
+    type: array
+  - default: does-not-exist
+    description: Name of a secret which will be made available to the build with 'buildah
+      build --secret' at /run/secrets/$ADDITIONAL_SECRET
+    name: ADDITIONAL_SECRET
+    type: string
+  - default: ""
+    description: Comma separated list of extra capabilities to add when running 'buildah
+      build'
+    name: ADD_CAPABILITIES
+    type: string
+  - default: []
+    description: Additional key=value annotations that should be applied to the image
+    name: ANNOTATIONS
+    type: array
+  - default: ""
+    description: Path to a file with additional key=value annotations that should
+      be applied to the image
+    name: ANNOTATIONS_FILE
+    type: string
+  - default: oci
+    description: The format for the resulting image's mediaType. Valid values are
+      oci (default) or docker.
+    name: BUILDAH_FORMAT
+    type: string
+  - default: []
+    description: Array of --build-arg values ("arg=value" strings)
+    name: BUILD_ARGS
+    type: array
+  - default: ""
+    description: Path to a file with build arguments, see https://www.mankier.com/1/buildah-build#--build-arg-file
+    name: BUILD_ARGS_FILE
+    type: string
+  - default: ""
+    description: The Trusted Artifact URI pointing to the artifact with the prefetched
+      dependencies.
+    name: CACHI2_ARTIFACT
+    type: string
+  - default: ""
+    description: The image is built from this commit.
+    name: COMMIT_SHA
+    type: string
+  - default: .
+    description: Path to the directory to use as context.
+    name: CONTEXT
+    type: string
+  - default: ./Dockerfile
+    description: Path to the Dockerfile to build.
+    name: DOCKERFILE
+    type: string
+  - default: etc-pki-entitlement
+    description: Name of secret which contains the entitlement certificates
+    name: ENTITLEMENT_SECRET
+    type: string
+  - default: "false"
+    description: Determines if build will be executed without network access.
+    name: HERMETIC
+    type: string
+  - description: Reference of the image buildah will produce.
+    name: IMAGE
+    type: string
+  - default: ""
+    description: Delete image tag after specified time. Empty means to keep the image
+      tag. Time values could be something like 1h, 2d, 3w for hours, days, and weeks,
+      respectively.
+    name: IMAGE_EXPIRES_AFTER
+    type: string
+  - default: []
+    description: Additional key=value labels that should be applied to the image
+    name: LABELS
+    type: array
+  - default: ""
+    description: In case it is not empty, the prefetched content should be made available
+      to the build.
+    name: PREFETCH_INPUT
+    type: string
+  - default: "true"
+    description: Whether to enable privileged mode, should be used only with remote
+      VMs
+    name: PRIVILEGED_NESTED
+    type: string
+  - default: spdx
+    description: 'Select the SBOM format to generate. Valid values: spdx, cyclonedx.
+      Note: the SBOM from the prefetch task - if there is one - must be in the same
+      format.'
+    name: SBOM_TYPE
+    type: string
+  - default: "false"
+    description: Skip SBOM-related operations. This will likely cause EC policies
+      to fail if enabled
+    name: SKIP_SBOM_GENERATION
+    type: string
+  - default: "true"
+    description: Whether to skip stages in Containerfile that seem unused by subsequent
+      stages
+    name: SKIP_UNUSED_STAGES
+    type: string
+  - description: The Trusted Artifact URI pointing to the artifact with the application
+      source code.
+    name: SOURCE_ARTIFACT
+    type: string
+  - default: "false"
+    description: Squash all new and previous layers added as a part of this build,
+      as per --squash
+    name: SQUASH
+    type: string
+  - default: overlay
+    description: Storage driver to configure for buildah
+    name: STORAGE_DRIVER
+    type: string
+  - default: ""
+    description: Target stage in Dockerfile to build. If not specified, the Dockerfile
+      is processed entirely to (and including) its last stage.
+    name: TARGET_STAGE
+    type: string
+  - default: "true"
+    description: Verify the TLS on the registry endpoint (for push/pull to a non-TLS
+      registry)
+    name: TLSVERIFY
+    type: string
+  - default: ""
+    description: Mount the current working directory into the build using --volume
+      $PWD:/$WORKINGDIR_MOUNT. Note that the $PWD will be the context directory for
+      the build (see the CONTEXT param).
+    name: WORKINGDIR_MOUNT
+    type: string
+  - default: fetched.repos.d
+    description: Path in source workspace where dynamically-fetched repos are present
+    name: YUM_REPOS_D_FETCHED
+  - default: repos.d
+    description: Path in the git repository in which yum repository files are stored
+    name: YUM_REPOS_D_SRC
+  - default: /etc/yum.repos.d
+    description: Target path on the container in which yum repository files should
+      be made available
+    name: YUM_REPOS_D_TARGET
+  - default: ca-bundle.crt
+    description: The name of the key in the ConfigMap that contains the CA bundle
+      data.
+    name: caTrustConfigMapKey
+    type: string
+  - default: trusted-ca
+    description: The name of the ConfigMap to read CA bundle data from.
+    name: caTrustConfigMapName
+    type: string
+  - description: The platform to build on
+    name: PLATFORM
+    type: string
+  - default: "false"
+    description: Whether to append a sanitized platform architecture on the IMAGE
+      tag
+    name: IMAGE_APPEND_PLATFORM
+    type: string
+  - description: Source qcow2 image for the dm-verity build
+    name: QCOW2
+  - description: PEM certificate for the dm-verity build
+    name: IMAGE_CERTIFICATE_PEM
+  - description: Private key for the dm-verity build
+    name: IMAGE_PRIVATE_KEY
+  results:
+  - description: Digest of the image just built
+    name: IMAGE_DIGEST
+  - description: Image reference of the built image
+    name: IMAGE_REF
+  - description: Image repository and tag where the built image was pushed
+    name: IMAGE_URL
+  - description: Reference of SBOM blob digest to enable digest-based verification
+      from provenance
+    name: SBOM_BLOB_URL
+    type: string
+  stepTemplate:
+    computeResources:
+      limits:
+        memory: 4Gi
+      requests:
+        cpu: "1"
+        memory: 1Gi
+    env:
+    - name: ACTIVATION_KEY
+      value: $(params.ACTIVATION_KEY)
+    - name: ADDITIONAL_SECRET
+      value: $(params.ADDITIONAL_SECRET)
+    - name: ADD_CAPABILITIES
+      value: $(params.ADD_CAPABILITIES)
+    - name: ANNOTATIONS_FILE
+      value: $(params.ANNOTATIONS_FILE)
+    - name: BUILD_ARGS_FILE
+      value: $(params.BUILD_ARGS_FILE)
+    - name: CONTEXT
+      value: $(params.CONTEXT)
+    - name: ENTITLEMENT_SECRET
+      value: $(params.ENTITLEMENT_SECRET)
+    - name: HERMETIC
+      value: $(params.HERMETIC)
+    - name: IMAGE
+      value: $(params.IMAGE)
+    - name: IMAGE_EXPIRES_AFTER
+      value: $(params.IMAGE_EXPIRES_AFTER)
+    - name: PRIVILEGED_NESTED
+      value: $(params.PRIVILEGED_NESTED)
+    - name: SBOM_TYPE
+      value: $(params.SBOM_TYPE)
+    - name: SKIP_SBOM_GENERATION
+      value: $(params.SKIP_SBOM_GENERATION)
+    - name: SKIP_UNUSED_STAGES
+      value: $(params.SKIP_UNUSED_STAGES)
+    - name: SOURCE_CODE_DIR
+      value: source
+    - name: SQUASH
+      value: $(params.SQUASH)
+    - name: STORAGE_DRIVER
+      value: $(params.STORAGE_DRIVER)
+    - name: TARGET_STAGE
+      value: $(params.TARGET_STAGE)
+    - name: TLSVERIFY
+      value: $(params.TLSVERIFY)
+    - name: WORKINGDIR_MOUNT
+      value: $(params.WORKINGDIR_MOUNT)
+    - name: YUM_REPOS_D_FETCHED
+      value: $(params.YUM_REPOS_D_FETCHED)
+    - name: YUM_REPOS_D_SRC
+      value: $(params.YUM_REPOS_D_SRC)
+    - name: YUM_REPOS_D_TARGET
+      value: $(params.YUM_REPOS_D_TARGET)
+    - name: BUILDER_IMAGE
+      value: quay.io/konflux-ci/buildah-task:latest@sha256:4d8273444b0f2781264c232e12e88449bbf078c99e3da2a7f6dcaaf27bc53712
+    - name: PLATFORM
+      value: $(params.PLATFORM)
+    - name: IMAGE_APPEND_PLATFORM
+      value: $(params.IMAGE_APPEND_PLATFORM)
+    - name: QCOW2
+      value: $(params.QCOW2)
+    - name: IMAGE_CERTIFICATE_PEM
+      value: $(params.IMAGE_CERTIFICATE_PEM)
+    - name: IMAGE_PRIVATE_KEY
+      value: $(params.IMAGE_PRIVATE_KEY)
+    volumeMounts:
+    - mountPath: /shared
+      name: shared
+    - mountPath: /var/workdir
+      name: workdir
+  steps:
+  - args:
+    - use
+    - $(params.SOURCE_ARTIFACT)=/var/workdir/source
+    - $(params.CACHI2_ARTIFACT)=/var/workdir/cachi2
+    computeResources: {}
+    image: quay.io/konflux-ci/build-trusted-artifacts:latest@sha256:edd8e3affc389320b15b9de8a5aedbf7b0463211b77c981563a2cfa20076b0c0
+    name: use-trusted-artifact
+    volumeMounts:
+    - mountPath: /etc/pki/tls/certs/ca-custom-bundle.crt
+      name: trusted-ca
+      readOnly: true
+      subPath: ca-bundle.crt
+  - args:
+    - --build-args
+    - $(params.BUILD_ARGS[*])
+    - --labels
+    - $(params.LABELS[*])
+    - --annotations
+    - $(params.ANNOTATIONS[*])
+    computeResources:
+      limits:
+        memory: 8Gi
+      requests:
+        cpu: "1"
+        memory: 2Gi
+    env:
+    - name: COMMIT_SHA
+      value: $(params.COMMIT_SHA)
+    - name: DOCKERFILE
+      value: $(params.DOCKERFILE)
+    image: quay.io/konflux-ci/buildah-task:latest@sha256:4d8273444b0f2781264c232e12e88449bbf078c99e3da2a7f6dcaaf27bc53712
+    name: build
+    script: |-
+      #!/bin/bash
+      set -e
+      set -o verbose
+
+      echo "[$(date --utc -Ins)] Prepare connection"
+
+      mkdir -p ~/.ssh
+      if [ -e "/ssh/error" ]; then
+        #no server could be provisioned
+        cat /ssh/error
+        exit 1
+      fi
+      export SSH_HOST=$(cat /ssh/host)
+
+      if [ "$SSH_HOST" == "localhost" ] ; then
+        IS_LOCALHOST=true
+        echo "Localhost detected; running build in cluster"
+      elif [ -e "/ssh/otp" ]; then
+        curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
+        echo "" >> ~/.ssh/id_rsa
+      else
+        cp /ssh/id_rsa ~/.ssh
+      fi
+
+      mkdir -p scripts
+
+      if ! [[ $IS_LOCALHOST ]]; then
+        echo "[$(date --utc -Ins)] Setup VM"
+
+        chmod 0400 ~/.ssh/id_rsa
+        export BUILD_DIR=$(cat /ssh/user-dir)
+        export SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
+        echo "$BUILD_DIR"
+        # shellcheck disable=SC2086
+        ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "${BUILD_DIR@Q}/workspaces" "${BUILD_DIR@Q}/scripts" "${BUILD_DIR@Q}/volumes"
+
+        PORT_FORWARD=""
+        PODMAN_PORT_FORWARD=""
+        if [ -n "$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR" ] ; then
+          PORT_FORWARD=" -L 80:$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR:80"
+          PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=localhost"
+        fi
+
+        echo "[$(date --utc -Ins)] Rsync data"
+
+        rsync -ra /shared/ "$SSH_HOST:$BUILD_DIR/volumes/shared/"
+        rsync -ra /var/workdir/ "$SSH_HOST:$BUILD_DIR/volumes/workdir/"
+        rsync -ra /entitlement/ "$SSH_HOST:$BUILD_DIR/volumes/etc-pki-entitlement/"
+        rsync -ra /activation-key/ "$SSH_HOST:$BUILD_DIR/volumes/activation-key/"
+        rsync -ra /additional-secret/ "$SSH_HOST:$BUILD_DIR/volumes/additional-secret/"
+        rsync -ra /mnt/trusted-ca/ "$SSH_HOST:$BUILD_DIR/volumes/trusted-ca/"
+        rsync -ra "$HOME/.docker/" "$SSH_HOST:$BUILD_DIR/.docker/"
+        rsync -ra "/tekton/results/" "$SSH_HOST:$BUILD_DIR/results/"
+      fi
+      if [ "${IMAGE_APPEND_PLATFORM}" == "true" ]; then
+        IMAGE="${IMAGE}-${PLATFORM//[^a-zA-Z0-9]/-}"
+        export IMAGE
+      fi
+
+      # this unquoted heredoc allows expansions for the image name
+      cat >scripts/script-build.sh <<REMOTESSHEOF
+      #!/bin/bash
+      set -euo pipefail
+
+      export QCOW2=${QCOW2}
+      export IMAGE_CERTIFICATE_PEM=${IMAGE_CERTIFICATE_PEM}
+      export IMAGE_PRIVATE_KEY=${IMAGE_PRIVATE_KEY}
+      export DOCKERFILE=${DOCKERFILE}
+
+      REMOTESSHEOF
+
+      # this quoted heredoc prevents expansions and command substitutions. the env vars are evaluated on the remote vm
+      cat >>scripts/script-build.sh <<'REMOTESSHEOF'
+      cd /var/workdir
+
+      echo "[$(date --utc -Ins)] Update CA trust"
+
+      ca_bundle=/mnt/trusted-ca/ca-bundle.crt
+      if [ -f "$ca_bundle" ]; then
+        echo "INFO: Using mounted CA bundle: $ca_bundle"
+        cp -vf $ca_bundle /etc/pki/ca-trust/source/anchors
+        update-ca-trust
+      fi
+
+      # Following example from https://github.com/confidential-devhub/coco-podvm-scripts/blob/main/example_run.sh
+      [[ -f $QCOW2 && -f $IMAGE_CERTIFICATE_PEM && -f $IMAGE_PRIVATE_KEY ]] || \
+          { printf "One or more required files are missing:\n\tQCOW2=$QCOW2\n\tIMAGE_CERTIFICATE_PEM=$IMAGE_CERTIFICATE_PEM\n\tIMAGE_PRIVATE_KEY=$IMAGE_PRIVATE_KEY\n "; exit 1; }
+
+      sudo podman build -t coco-podvm \
+          -v /activation-key:/activation-key:ro,Z \
+          -f ${DOCKERFILE} .
+
+      #[[ -n "$ROOT_PASSWORD" ]] && run_extras+=" -e ROOT_PASSWORD=$ROOT_PASSWORD "
+
+      sudo podman run --rm \
+          --privileged \
+          -v $QCOW2:/disk.qcow2 \
+          -v $IMAGE_CERTIFICATE_PEM:/public.pem:ro,Z \
+          -v $IMAGE_PRIVATE_KEY:/private.key:ro,Z \
+          -v /lib/modules:/lib/modules:ro,Z \
+          --user 0 \
+          --security-opt=apparmor=unconfined \
+          --security-opt=seccomp=unconfined \
+          --mount type=bind,source=/dev,target=/dev \
+          --mount type=bind,source=/run/udev,target=/run/udev \
+          $run_extras \
+          localhost/coco-podvm
+
+      echo "[$(date --utc -Ins)] End remote build"
+      REMOTESSHEOF
+
+      # make scripts executable and sync them to the cloud VM.
+      chmod +x scripts/script-build.sh
+
+      if ! [[ $IS_LOCALHOST ]]; then
+        PRIVILEGED_NESTED_FLAGS=()
+        if [[ "${PRIVILEGED_NESTED}" == "true" ]]; then
+          # This is a workaround for building bootc images because the cache filesystem (/var/tmp/ on the host) must be a real filesystem that supports setting SELinux security attributes.
+          # https://github.com/coreos/rpm-ostree/discussions/4648
+          # shellcheck disable=SC2086
+          ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "${BUILD_DIR@Q}/var/tmp"
+          PRIVILEGED_NESTED_FLAGS=(--privileged --mount "type=bind,source=$BUILD_DIR/var/tmp,target=/var/tmp,relabel=shared")
+        fi
+        rsync -ra scripts "$SSH_HOST:$BUILD_DIR"
+        echo "[$(date --utc -Ins)] Build via ssh"
+        # shellcheck disable=SC2086
+        # Please note: all variables below the first ssh line must be quoted with ${var@Q}!
+        # See https://stackoverflow.com/questions/6592376/prevent-ssh-from-breaking-up-shell-script-parameters
+        ssh $SSH_ARGS "$SSH_HOST" $PORT_FORWARD podman  run $PODMAN_PORT_FORWARD \
+          --tmpfs /run/secrets \
+          -e ACTIVATION_KEY="${ACTIVATION_KEY@Q}" \
+          -e ADDITIONAL_SECRET="${ADDITIONAL_SECRET@Q}" \
+          -e ADD_CAPABILITIES="${ADD_CAPABILITIES@Q}" \
+          -e ANNOTATIONS_FILE="${ANNOTATIONS_FILE@Q}" \
+          -e BUILD_ARGS_FILE="${BUILD_ARGS_FILE@Q}" \
+          -e CONTEXT="${CONTEXT@Q}" \
+          -e ENTITLEMENT_SECRET="${ENTITLEMENT_SECRET@Q}" \
+          -e HERMETIC="${HERMETIC@Q}" \
+          -e IMAGE="${IMAGE@Q}" \
+          -e IMAGE_EXPIRES_AFTER="${IMAGE_EXPIRES_AFTER@Q}" \
+          -e PRIVILEGED_NESTED="${PRIVILEGED_NESTED@Q}" \
+          -e SBOM_TYPE="${SBOM_TYPE@Q}" \
+          -e SKIP_SBOM_GENERATION="${SKIP_SBOM_GENERATION@Q}" \
+          -e SKIP_UNUSED_STAGES="${SKIP_UNUSED_STAGES@Q}" \
+          -e SOURCE_CODE_DIR="${SOURCE_CODE_DIR@Q}" \
+          -e SQUASH="${SQUASH@Q}" \
+          -e STORAGE_DRIVER="${STORAGE_DRIVER@Q}" \
+          -e TARGET_STAGE="${TARGET_STAGE@Q}" \
+          -e TLSVERIFY="${TLSVERIFY@Q}" \
+          -e WORKINGDIR_MOUNT="${WORKINGDIR_MOUNT@Q}" \
+          -e YUM_REPOS_D_FETCHED="${YUM_REPOS_D_FETCHED@Q}" \
+          -e YUM_REPOS_D_SRC="${YUM_REPOS_D_SRC@Q}" \
+          -e YUM_REPOS_D_TARGET="${YUM_REPOS_D_TARGET@Q}" \
+          -e COMMIT_SHA="${COMMIT_SHA@Q}" \
+          -e DOCKERFILE="${DOCKERFILE@Q}" \
+          -v "${BUILD_DIR@Q}/volumes/shared:/shared:Z" \
+          -v "${BUILD_DIR@Q}/volumes/workdir:/var/workdir:Z" \
+          -v "${BUILD_DIR@Q}/volumes/etc-pki-entitlement:/entitlement:Z" \
+          -v "${BUILD_DIR@Q}/volumes/activation-key:/activation-key:Z" \
+          -v "${BUILD_DIR@Q}/volumes/additional-secret:/additional-secret:Z" \
+          -v "${BUILD_DIR@Q}/volumes/trusted-ca:/mnt/trusted-ca:Z" \
+          -v "${BUILD_DIR@Q}/.docker/:/root/.docker:Z" \
+          -v "${BUILD_DIR@Q}/results/:/tekton/results:Z" \
+          -v "${BUILD_DIR@Q}/scripts:/scripts:Z" \
+          "${PRIVILEGED_NESTED_FLAGS[@]@Q}" \
+          --user=0 "${PODMAN_NVIDIA_ARGS[@]@Q}" --rm "${BUILDER_IMAGE@Q}" /scripts/script-build.sh "${@@Q}"
+        echo "[$(date --utc -Ins)] Rsync back"
+        rsync -ra "$SSH_HOST:$BUILD_DIR/volumes/shared/" /shared/
+        rsync -ra "$SSH_HOST:$BUILD_DIR/volumes/workdir/" /var/workdir/
+        rsync -ra "$SSH_HOST:$BUILD_DIR/results/" "/tekton/results/"
+        echo "[$(date --utc -Ins)] Buildah pull"
+        buildah pull "oci:konflux-final-image:$IMAGE"
+      else
+        bash scripts/script-build.sh "$@"
+      fi
+      echo "Build on remote host $SSH_HOST finished"
+
+      echo "[$(date --utc -Ins)] Final touches"
+
+      buildah images
+      echo "[$(date --utc -Ins)] End remote"
+    securityContext:
+      capabilities:
+        add:
+        - SETFCAP
+    volumeMounts:
+    - mountPath: /var/lib/containers
+      name: varlibcontainers
+    - mountPath: /entitlement
+      name: etc-pki-entitlement
+    - mountPath: /activation-key
+      name: activation-key
+    - mountPath: /additional-secret
+      name: additional-secret
+    - mountPath: /mnt/trusted-ca
+      name: trusted-ca
+      readOnly: true
+    - mountPath: /ssh
+      name: ssh
+      readOnly: true
+    workingDir: /var/workdir
+  volumes:
+  - name: activation-key
+    secret:
+      optional: true
+      secretName: $(params.ACTIVATION_KEY)
+  - name: additional-secret
+    secret:
+      optional: true
+      secretName: $(params.ADDITIONAL_SECRET)
+  - name: etc-pki-entitlement
+    secret:
+      optional: true
+      secretName: $(params.ENTITLEMENT_SECRET)
+  - emptyDir: {}
+    name: shared
+  - configMap:
+      items:
+      - key: $(params.caTrustConfigMapKey)
+        path: ca-bundle.crt
+      name: $(params.caTrustConfigMapName)
+      optional: true
+    name: trusted-ca
+  - emptyDir: {}
+    name: varlibcontainers
+  - emptyDir: {}
+    name: workdir
+  - name: ssh
+    secret:
+      optional: false
+      secretName: multi-platform-ssh-$(context.taskRun.name)
+
